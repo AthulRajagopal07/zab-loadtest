@@ -30,5 +30,5 @@ class ZookeeperUser(User):
                 request_type="znode",
                 name="create",
                 response_time=(time.time() - start) * 1000,
-                exception=str(e)  # convert exception to string
+                exception=str(e)  # must be a string
             )
