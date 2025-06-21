@@ -1,5 +1,5 @@
 from kazoo.client import KazooClient
-from locust import User, task, between
+from locust import User, task, between, events
 import time, uuid
 
 class ZookeeperUser(User):
@@ -20,7 +20,7 @@ class ZookeeperUser(User):
         try:
             self.zk.create(path, data)
             total_time = (time.time() - start) * 1000
-            self.environment.events.request_success.fire(
+            events.request_success.fire(
                 request_type="znode",
                 name="create",
                 response_time=total_time,
@@ -28,7 +28,7 @@ class ZookeeperUser(User):
             )
         except Exception as e:
             total_time = (time.time() - start) * 1000
-            self.environment.events.request_failure.fire(
+            events.request_failure.fire(
                 request_type="znode",
                 name="create",
                 response_time=total_time,
