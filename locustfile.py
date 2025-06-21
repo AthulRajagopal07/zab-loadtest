@@ -6,11 +6,11 @@ class ZookeeperUser(User):
     wait_time = between(1, 2)
 
     def on_start(self):
-        self.client = KazooClient(hosts='zookeeper-0.zookeeper-headless.zk-test.svc.cluster.local:2181')
-        self.client.start()
+        self.zk = KazooClient(hosts='zookeeper.zk-test.svc.cluster.local:2181')
+        self.zk.start()
 
     def on_stop(self):
-        self.client.stop()
+        self.zk.stop()
 
     @task
     def write_znode(self):
@@ -18,17 +18,20 @@ class ZookeeperUser(User):
         data = b"some test data"
         start = time.time()
         try:
-            self.client.create(path, data)
-            self.environment.events.request_success.fire(
+            self.zk.create(path, data)
+            total_time = (time.time() - start) * 1000
+            self.environment.stats.log_request(
                 request_type="znode",
                 name="create",
-                response_time=(time.time() - start) * 1000,
-                response_length=len(data)
+                response_time=total_time,
+                response_length=len(data),
             )
         except Exception as e:
-            self.environment.events.request_failure.fire(
+            total_time = (time.time() - start) * 1000
+            self.environment.stats.log_request(
                 request_type="znode",
                 name="create",
-                response_time=(time.time() - start) * 1000,
+                response_time=total_time,
+                response_length=0,
                 exception=e
             )
