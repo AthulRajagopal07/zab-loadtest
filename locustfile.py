@@ -20,7 +20,7 @@ class ZookeeperUser(User):
         try:
             self.zk.create(path, data)
             total_time = (time.time() - start) * 1000
-            self.environment.events.request_success.fire(
+            self.environment.stats.log_request(
                 request_type="znode",
                 name="create",
                 response_time=total_time,
@@ -28,9 +28,10 @@ class ZookeeperUser(User):
             )
         except Exception as e:
             total_time = (time.time() - start) * 1000
-            self.environment.events.request_failure.fire(
+            self.environment.stats.log_request(
                 request_type="znode",
                 name="create",
                 response_time=total_time,
+                response_length=0,
                 exception=e
             )
