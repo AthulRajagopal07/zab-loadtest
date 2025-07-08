@@ -44,7 +44,7 @@ class ZookeeperUser(User):
 results = []
 
 @events.request.add_listener
-def log_request(request_type, name, response_time, response_length, exception, context, start_time, url, **kwargs):
+def log_request(request_type, name, response_time, response_length, exception, **kwargs):
     results.append({
         "timestamp": time.time(),
         "request_type": request_type,
