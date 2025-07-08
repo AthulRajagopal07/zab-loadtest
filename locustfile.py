@@ -1,6 +1,8 @@
-from locust import User, task, between
+from locust import User, task, between, events
 from kazoo.client import KazooClient
-import time, uuid
+import time
+import uuid
+import csv
 
 class ZookeeperUser(User):
     wait_time = between(1, 2)
@@ -36,3 +38,30 @@ class ZookeeperUser(User):
                 response_length=0,
                 exception=e
             )
+
+# 🚀 NEW: Per-request logging for analysis
+
+results = []
+
+@events.request.add_listener
+def log_request(request_type, name, response_time, response_length, exception, context, start_time, url, **kwargs):
+    results.append({
+        "timestamp": time.time(),
+        "request_type": request_type,
+        "name": name,
+        "response_time": response_time,
+        "exception": str(exception) if exception else None
+    })
+
+@events.quitting.add_listener
+def save_results(environment, **kwargs):
+    if not results:
+        print("⚠️ No requests captured to save.")
+        return
+    keys = results[0].keys()
+    filename = f"locust_per_request_{int(time.time())}.csv"
+    with open(filename, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=keys)
+        writer.writeheader()
+        writer.writerows(results)
+    print(f"✅ Per-request results saved to {filename}")
