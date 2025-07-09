@@ -3,6 +3,7 @@ from kazoo.client import KazooClient
 import time
 import uuid
 import csv
+from datetime import datetime
 
 class ZookeeperUser(User):
     wait_time = between(1, 2)
@@ -46,7 +47,7 @@ results = []
 @events.request.add_listener
 def log_request(request_type, name, response_time, response_length, exception, **kwargs):
     results.append({
-        "timestamp": time.time(),
+        "timestamp": datetime.utcnow().isoformat(),
         "request_type": request_type,
         "name": name,
         "response_time": response_time,
@@ -56,7 +57,7 @@ def log_request(request_type, name, response_time, response_length, exception, *
 @events.quitting.add_listener
 def save_results(environment, **kwargs):
     if not results:
-        print("⚠️ No requests captured to save.")
+        print("⚠️ No requests captured to save.", flush=True)
         return
     keys = results[0].keys()
     filename = f"locust_per_request_{int(time.time())}.csv"
@@ -64,4 +65,4 @@ def save_results(environment, **kwargs):
         writer = csv.DictWriter(f, fieldnames=keys)
         writer.writeheader()
         writer.writerows(results)
-    print(f"✅ Per-request results saved to {filename}")
+    print(f"✅ Per-request results saved to {filename}", flush=True)
