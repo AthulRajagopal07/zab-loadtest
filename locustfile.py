@@ -1,21 +1,22 @@
-from locust import User, task, between
+from locust import User, task, between, events
 from kazoo.client import KazooClient
 import time
 import csv
 import os
 
 class ZookeeperUser(User):
+    host = "http://dummy"  # Required by Locust
     wait_time = between(1, 2.5)
 
     def on_start(self):
-        # Hardcoded ZooKeeper host (replace with your own service address if needed)
         self.zk = KazooClient(hosts="zookeeper-0.zookeeper-headless.zk-test.svc.cluster.local:2181")
         self.zk.start()
         self.start_time = time.time()
         self.results = []
-
-        # Prepare result file and write header if not exists
-        self.result_file = f"locust_results_{int(self.start_time)}.csv"
+        
+        if not os.path.exists("zookeeper_results"):
+            os.makedirs("zookeeper_results")
+        self.result_file = f"zookeeper_results/locust_results_{int(self.start_time)}.csv"
         if not os.path.exists(self.result_file):
             with open(self.result_file, "w", newline="") as f:
                 writer = csv.writer(f)
@@ -25,12 +26,6 @@ class ZookeeperUser(User):
         self.zk.stop()
         self.zk.close()
 
-    def save_results(self):
-        with open(self.result_file, "a", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerows(self.results)
-        self.results = []
-
     @task
     def get_stat(self):
         start = time.time()
@@ -38,7 +33,7 @@ class ZookeeperUser(User):
             stat_output = self.zk.command("stat")
             latency_ms = (time.time() - start) * 1000
 
-            # Parse required metrics
+            # Parse metrics
             lines = stat_output.split("\n")
             mode = ""
             zxid = ""
@@ -51,12 +46,26 @@ class ZookeeperUser(User):
                 elif "Outstanding:" in line:
                     outstanding = line.split(":")[1].strip()
 
-            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-            self.results.append([timestamp, round(latency_ms, 2), outstanding, zxid, mode])
+            # Report custom metric to Locust
+            events.request.fire(
+                request_type="ZK",
+                name="stat",
+                response_time=latency_ms,
+                response_length=0,
+                exception=None,
+            )
 
-            # Save every 10 requests
-            if len(self.results) % 10 == 0:
-                self.save_results()
+            # Save to CSV
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            with open(self.result_file, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([timestamp, round(latency_ms, 2), outstanding, zxid, mode])
 
         except Exception as e:
-            print(f"Error during get_stat: {e}")
+            events.request.fire(
+                request_type="ZK",
+                name="stat",
+                response_time=0,
+                response_length=0,
+                exception=e,
+            )
