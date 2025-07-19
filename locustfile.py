@@ -31,12 +31,10 @@ class ZookeeperUser(User):
     def get_stat(self):
         start = time.time()
         try:
-            # 🛠️ FIXED: Use byte input for .command()
-            stat_output_bytes = self.zk.command(b"stat")
-            stat_output = stat_output_bytes.decode("utf-8")
+            # kazoo.command returns a string, no need to decode
+            stat_output = self.zk.command(b"stat")
             latency_ms = (time.time() - start) * 1000
 
-            # Extract values from stat output
             mode = zxid = outstanding = ""
             for line in stat_output.split("\n"):
                 if "Mode:" in line:
