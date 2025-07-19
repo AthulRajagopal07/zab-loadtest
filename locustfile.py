@@ -5,26 +5,23 @@ import csv
 import os
 
 class ZookeeperUser(User):
-    host = "http://dummy"  # Required by Locust, but not used
-    wait_time = between(0.1, 0.3)  # Best for your test goals
+    host = "http://dummy"  # Required for Locust UI, not used
+    wait_time = between(0.1, 0.5)  # Adjust depending on how aggressive you want your test
 
     def on_start(self):
-        self.zk = KazooClient(
-            hosts="zookeeper-0.zookeeper-headless.zk-test.svc.cluster.local:2181"
-        )
+        self.zk = KazooClient(hosts="zookeeper-0.zookeeper-headless.zk-test.svc.cluster.local:2181")
         self.zk.start()
         self.start_time = time.time()
 
-        # Ensure results folder exists
+        # Create results directory
         if not os.path.exists("zookeeper_results"):
             os.makedirs("zookeeper_results")
 
-        # Create CSV file
+        # Create unique CSV file
         self.result_file = f"zookeeper_results/locust_results_{int(self.start_time)}.csv"
-        if not os.path.exists(self.result_file):
-            with open(self.result_file, "w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(["Timestamp", "Latency_ms", "Outstanding", "Zxid", "Mode"])
+        with open(self.result_file, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Timestamp", "Latency (ms)", "Outstanding Requests", "Zxid", "Mode"])
 
     def on_stop(self):
         self.zk.stop()
@@ -34,18 +31,14 @@ class ZookeeperUser(User):
     def get_stat(self):
         start = time.time()
         try:
-            # Get binary response from stat command
-            stat_output_bytes = self.zk.command("stat")
-            stat_output = stat_output_bytes.decode("utf-8")  # ✅ FIXED
-
+            # 🛠️ FIXED: Use byte input for .command()
+            stat_output_bytes = self.zk.command(b"stat")
+            stat_output = stat_output_bytes.decode("utf-8")
             latency_ms = (time.time() - start) * 1000
 
-            # Parse metrics from output
-            lines = stat_output.split("\n")
-            mode = ""
-            zxid = ""
-            outstanding = ""
-            for line in lines:
+            # Extract values from stat output
+            mode = zxid = outstanding = ""
+            for line in stat_output.split("\n"):
                 if "Mode:" in line:
                     mode = line.split(":")[1].strip()
                 elif "Zxid:" in line:
@@ -53,7 +46,7 @@ class ZookeeperUser(User):
                 elif "Outstanding:" in line:
                     outstanding = line.split(":")[1].strip()
 
-            # Fire custom event to show in Locust UI
+            # Report to Locust dashboard
             events.request.fire(
                 request_type="ZK",
                 name="stat",
@@ -62,7 +55,7 @@ class ZookeeperUser(User):
                 exception=None,
             )
 
-            # Save to CSV for plotting
+            # Log to CSV
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
             with open(self.result_file, "a", newline="") as f:
                 writer = csv.writer(f)
