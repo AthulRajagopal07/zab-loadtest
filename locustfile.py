@@ -1,76 +1,62 @@
-from locust import HttpUser, task, between, events, tag
+from locust import User, task, between
 from kazoo.client import KazooClient
-import uuid
 import time
-import logging
 import csv
 import os
 
-class ZookeeperUser(HttpUser):
-    wait_time = between(1, 2)
+class ZookeeperUser(User):
+    wait_time = between(1, 2.5)
 
     def on_start(self):
+        # Hardcoded ZooKeeper host (replace with your own service address if needed)
         self.zk = KazooClient(hosts="zookeeper-0.zookeeper-headless.zk-test.svc.cluster.local:2181")
         self.zk.start()
-        self._init_results_csv()
+        self.start_time = time.time()
+        self.results = []
+
+        # Prepare result file and write header if not exists
+        self.result_file = f"locust_results_{int(self.start_time)}.csv"
+        if not os.path.exists(self.result_file):
+            with open(self.result_file, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Timestamp", "Latency (ms)", "Outstanding Requests", "Zxid", "Mode"])
 
     def on_stop(self):
         self.zk.stop()
         self.zk.close()
 
-    def _init_results_csv(self):
-        self.results_file = "locust_results.csv"
-        if not os.path.exists(self.results_file):
-            with open(self.results_file, mode="w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(["timestamp", "operation", "znode_path", "response_time", "success", "is_leader", "server_id"])
+    def save_results(self):
+        with open(self.result_file, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerows(self.results)
+        self.results = []
 
-    def _record_metrics(self, operation, znode_path, start_time, success, is_leader, server_id):
-        response_time = (time.time() - start_time) * 1000  # in ms
-        with open(self.results_file, mode="a", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                time.strftime("%Y-%m-%d %H:%M:%S"),
-                operation,
-                znode_path,
-                round(response_time, 2),
-                success,
-                is_leader,
-                server_id
-            ])
-
-    @tag('write')
-    @task(weight=3)
-    def write_znode(self):
-        path = f"/locust_test_{uuid.uuid4()}"
-        start_time = time.time()
-        is_leader = None
-        server_id = None
-        success = False
-
+    @task
+    def get_stat(self):
+        start = time.time()
         try:
-            self.zk.create(path, b"test_data", ephemeral=True)
-            success = True
+            stat_output = self.zk.command("stat")
+            latency_ms = (time.time() - start) * 1000
+
+            # Parse required metrics
+            lines = stat_output.split("\n")
+            mode = ""
+            zxid = ""
+            outstanding = ""
+            for line in lines:
+                if "Mode:" in line:
+                    mode = line.split(":")[1].strip()
+                elif "Zxid:" in line:
+                    zxid = line.split(":")[1].strip()
+                elif "Outstanding:" in line:
+                    outstanding = line.split(":")[1].strip()
+
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            self.results.append([timestamp, round(latency_ms, 2), outstanding, zxid, mode])
+
+            # Save every 10 requests
+            if len(self.results) % 10 == 0:
+                self.save_results()
+
         except Exception as e:
-            logging.error(f"Write failed: {str(e)}")
-
-        self._record_metrics("write", path, start_time, success, is_leader, server_id)
-
-    @tag('read')
-    @task(weight=1)
-    def read_znode(self):
-        children = self.zk.get_children("/")
-        path = f"/{children[0]}" if children else "/"
-        start_time = time.time()
-        is_leader = None
-        server_id = None
-        success = False
-
-        try:
-            if self.zk.exists(path):
-                self.zk.get(path)
-                success = True
-        except Exception as e:
-            logging.error(f"Read failed: {str(e)}")
-
-        self._record_metrics("read", path, start_time, success, is_leader, server_id)
+            print(f"Error during get_stat: {e}")
