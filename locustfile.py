@@ -11,8 +11,8 @@ class ZookeeperUser(User):
     Locust user class for testing ZooKeeper Zab protocol performance
     """
     # Set default host (override with --host parameter)
-    host = "127.0.0.1:2181"
-    wait_time = between(0.1, 0.5)  # Adjust based on your test needs
+    host = "zookeeper.zk-test.svc.cluster.local:2181"
+    wait_time = between(1,2)  # Adjust based on your test needs
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
